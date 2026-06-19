@@ -21,35 +21,41 @@ resource "aws_internet_gateway" "this" {
 
 ##### Public Subnet ####
 resource "aws_subnet" "public" {
+  count = length(var.public_subnet_cidrs)
+
   vpc_id                  = aws_vpc.this.id
-  cidr_block              = var.public_subnet_cidr
-  availability_zone       = var.availability_zone
+  cidr_block              = var.public_subnet_cidrs[count.index]
+  availability_zone       = data.aws_availability_zones.available.names[count.index]
   map_public_ip_on_launch = true
 
   tags = {
-    Name = "${var.vpc_name}-public"
+    Name = "${var.vpc_name}-public-${count.index + 1}"
   }
 }
 
 #### Private Subnet ####
 resource "aws_subnet" "private_app" {
+  count = length(var.private_app_subnet_cidrs)
+
   vpc_id            = aws_vpc.this.id
-  cidr_block        = var.private_app_subnet_cidr
-  availability_zone = var.availability_zone
+  cidr_block        = var.private_app_subnet_cidrs[count.index]
+  availability_zone = data.aws_availability_zones.available.names[count.index]
 
   tags = {
-    Name = "${var.vpc_name}-private-app"
+    Name = "${var.vpc_name}-private-app-${count.index + 1}"
   }
 }
 
-#### Private AI Subnet ####
+#####Private Subnet AI ####
 resource "aws_subnet" "private_ai" {
+  count = length(var.private_ai_subnet_cidrs)
+
   vpc_id            = aws_vpc.this.id
-  cidr_block        = var.private_ai_subnet_cidr
-  availability_zone = var.availability_zone
+  cidr_block        = var.private_ai_subnet_cidrs[count.index]
+  availability_zone = data.aws_availability_zones.available.names[count.index]
 
   tags = {
-    Name = "${var.vpc_name}-private-ai"
+    Name = "${var.vpc_name}-private-ai-${count.index + 1}"
   }
 }
 
@@ -120,6 +126,6 @@ resource "aws_route_table_association" "private_ai" {
 }
 
 
-
+data "aws_availability_zones" "available" {}
 
 

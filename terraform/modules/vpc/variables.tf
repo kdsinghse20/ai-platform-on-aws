@@ -7,15 +7,15 @@ variable "vpc_cidr" {
 }
 
 variable "public_subnet_cidr" {
-  type = string
+  type = list(string)
 }
 
 variable "private_app_subnet_cidr" {
-  type = string
+  type = list(string)
 }
 
 variable "private_ai_subnet_cidr" {
-  type = string
+  type = list(string)
 }
 
 variable "availability_zone" {
