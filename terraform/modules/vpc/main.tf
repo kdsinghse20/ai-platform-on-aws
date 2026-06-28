@@ -71,7 +71,7 @@ resource "aws_eip" "nat" {
 #### NAT Gatway ####
 resource "aws_nat_gateway" "this" {
   allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public.id
+  subnet_id     = aws_subnet.public[count.index] ###aws_subnet.public.id
 
   depends_on = [
     aws_internet_gateway.this
@@ -97,7 +97,7 @@ resource "aws_route_table" "public" {
 }
 
 resource "aws_route_table_association" "public" {
-  subnet_id      = aws_subnet.public.id
+  subnet_id      = aws_subnet.public[count.index] ####aws_subnet.public.id
   route_table_id = aws_route_table.public.id
 }
 
