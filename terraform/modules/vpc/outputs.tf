@@ -3,13 +3,13 @@ output "vpc_id" {
 }
 
 output "public_subnet_id" {
-  value = aws_subnet.public[*].id ####aws_subnet.public.id
+  value = aws_subnet.public[*].id
 }
 
 output "private_app_subnet_id" {
-  value = aws_subnet.private_app[*].id ###aws_subnet.private_app.id
+  value = aws_subnet.private_app[*].id
 }
 
 output "private_ai_subnet_id" {
-  value = aws_subnet.private_ai[*].id ####aws_subnet.private_ai.id
+  value = aws_subnet.private_ai[*].id
 }
