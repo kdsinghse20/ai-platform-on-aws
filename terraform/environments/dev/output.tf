@@ -4,7 +4,7 @@ output "vpc_id" {
 output "openwebui_private_ip" {
   value = module.ec2.private_ip
 }
-
+# Print priavte ip
 output "ollama_private_ip" {
   value = module.ec2.private_ip
 }
