@@ -1,0 +1,9 @@
+---
+- name: Prepare Ubuntu Servers
+
+  hosts: ai-platform
+
+  become: true
+
+  roles:
+    - common
