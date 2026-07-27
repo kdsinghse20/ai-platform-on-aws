@@ -1,4 +1,4 @@
-output "vpc_ids" {
+output "vpc_id" {
   value = aws_vpc.this.id
 }
 

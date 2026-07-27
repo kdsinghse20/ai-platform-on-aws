@@ -25,8 +25,8 @@ module "security_groups" {
 
   source = "../../modules/security-groups"
 
-  #  project_name = "ai-ollama"
-  #  environment  = "dev"
+  # project_name = "ai-ollama"
+  # environment  = "dev"
 
   vpc_id = module.vpc.vpc_id
 
@@ -95,7 +95,7 @@ module "ollama" {
 
   ami_id = data.aws_ami.ubuntu.id
 
-  instance_type = "g4dn.xlarge"
+  instance_type = "t3.large"
 
   subnet_id = module.vpc.private_ai_subnet_ids[0]
 
