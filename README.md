@@ -7,3 +7,4 @@ Currently building:
 - Terraform Modules
 - Ansible Automation
 - Self-hosted LLM Infrastructure
+- Ollama with LLM
