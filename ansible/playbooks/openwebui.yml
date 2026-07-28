@@ -1,0 +1,8 @@
+---
+- name: Install Open WebUI
+  hosts: openwebui
+  become: true
+  gather_facts: true
+
+  roles:
+    - openwebui

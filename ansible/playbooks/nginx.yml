@@ -1,0 +1,8 @@
+---
+- name: Configure Nginx
+  hosts: openwebui
+  become: true
+  gather_facts: true
+
+  roles:
+    - nginx

@@ -1,9 +1,8 @@
 ---
 - name: Prepare Ubuntu Servers
-
   hosts: ai-platform
-
   become: true
+  gather_facts: true
 
   roles:
     - common
