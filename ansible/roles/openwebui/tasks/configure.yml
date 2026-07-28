@@ -1,0 +1,14 @@
+---
+- name: Create systemd service
+  template:
+    src: openwebui.service.j2
+    dest: /etc/systemd/system/openwebui.service
+    mode: "0644"
+  notify: Restart OpenWebUI
+
+- name: Enable service
+  systemd:
+    name: openwebui
+    daemon_reload: yes
+    enabled: yes
+    state: started

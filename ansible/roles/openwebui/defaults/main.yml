@@ -1,0 +1,8 @@
+---
+openwebui_port: 8080
+
+openwebui_user: openwebui
+
+openwebui_home: /opt/openwebui
+
+ollama_api_url: "{{ hostvars[inventory_hostname].ollama_api_url | default('http://10.0.20.112:11434') }}"

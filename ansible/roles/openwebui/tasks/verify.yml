@@ -1,0 +1,9 @@
+---
+- name: Wait for OpenWebUI
+  uri:
+    url: "http://localhost:8080"
+    status_code: 200
+  register: webui
+  retries: 20
+  delay: 5
+  until: webui.status == 200

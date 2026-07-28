@@ -1,0 +1,17 @@
+[Unit]
+Description=Open WebUI
+After=network.target
+
+[Service]
+User={{ openwebui_user }}
+WorkingDirectory={{ openwebui_home }}
+
+Environment=OLLAMA_BASE_URL={{ ollama_api_url }}
+Environment=WEBUI_AUTH=False
+
+ExecStart={{ openwebui_home }}/venv/bin/open-webui serve --host 0.0.0.0 --port {{ openwebui_port }}
+
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

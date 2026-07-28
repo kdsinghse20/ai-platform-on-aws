@@ -1,0 +1,14 @@
+---
+- name: Wait for Ollama API
+  ansible.builtin.uri:
+    url: http://localhost:11434
+    status_code: 200,404
+  register: ollama_status
+  retries: 30
+  delay: 5
+  until: ollama_status.status in [200,404]
+
+- name: Pull models
+  ansible.builtin.command:
+    cmd: "ollama pull {{ item }}"
+  loop: "{{ ollama_models }}"
