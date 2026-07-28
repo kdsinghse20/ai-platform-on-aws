@@ -1,0 +1,10 @@
+---
+- name: Get installed models
+  ansible.builtin.command:
+    cmd: ollama list
+  register: ollama_models_output
+  changed_when: false
+
+- name: Display installed models
+  ansible.builtin.debug:
+    var: ollama_models_output.stdout
