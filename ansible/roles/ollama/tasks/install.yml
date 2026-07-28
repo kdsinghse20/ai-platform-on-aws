@@ -1,7 +1,27 @@
-Install curl
+---
+- name: Install required packages
+  ansible.builtin.apt:
+    name:
+      - curl
+      - unzip
+    state: present
+    update_cache: yes
 
-Download installer
+- name: Check if Ollama is installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/ollama
+  register: ollama_binary
 
-Install Ollama
+- name: Download Ollama installer
+  ansible.builtin.get_url:
+    url: https://ollama.com/install.sh
+    dest: /tmp/install-ollama.sh
+    mode: "0755"
+  when: not ollama_binary.stat.exists
 
-Enable service
+- name: Install Ollama
+  ansible.builtin.command:
+
+    cmd: /tmp/install-ollama.sh
+
+  when: not ollama_binary.stat.exists        

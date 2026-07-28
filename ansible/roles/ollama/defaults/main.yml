@@ -1,0 +1,11 @@
+---
+ollama_version: "latest"
+
+ollama_host: "0.0.0.0:11434"
+
+ollama_user: "ollama"
+
+ollama_models:
+  - gemma3:1b
+
+ollama_service_name: "ollama"
