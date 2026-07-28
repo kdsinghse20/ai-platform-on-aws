@@ -1,0 +1,8 @@
+---
+- import_playbook: common.yml
+
+- import_playbook: ollama.yml
+
+- import_playbook: openwebui.yml
+
+- import_playbook: nginx.yml
