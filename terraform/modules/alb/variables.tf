@@ -18,11 +18,6 @@ variable "alb_security_group_id" {
   type = string
 }
 
-variable "certificate_arn" {
-  type    = string
-  default = ""
-}
-
 variable "target_instance_id" {
   type = string
 }
