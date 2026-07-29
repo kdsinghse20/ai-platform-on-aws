@@ -1,0 +1,30 @@
+---
+
+- name: Copy nginx config
+  template:
+    src: openwebui.conf.j2
+    dest: /etc/nginx/sites-available/openwebui.conf
+  notify: Reload nginx
+
+- name: Enable site
+  file:
+    src: /etc/nginx/sites-available/openwebui.conf
+    dest: /etc/nginx/sites-enabled/openwebui.conf
+    state: link
+  notify: Reload nginx
+
+- name: Remove default site
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Reload nginx
+
+- name: Validate nginx configuration
+  command: nginx -t
+  changed_when: false
+
+- name: Ensure nginx is running
+  service:
+    name: nginx
+    state: started
+    enabled: yes
