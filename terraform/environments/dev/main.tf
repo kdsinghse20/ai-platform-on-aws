@@ -28,7 +28,7 @@ module "security_groups" {
   # project_name = "ai-ollama"
   # environment  = "dev"
 
-  vpc_id = module.vpc.vpc_ids
+  vpc_id = module.vpc.vpc_id
 
 }
 
@@ -113,7 +113,7 @@ module "alb" {
   project_name = "ai-platform"
   environment  = "dev"
 
-  vpc_id = module.vpc.vpc_ids
+  vpc_id = module.vpc.vpc_id
 
   public_subnet_ids = module.vpc.public_subnet_ids
 
