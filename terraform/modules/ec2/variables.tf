@@ -37,7 +37,7 @@ variable "key_name" {
 
 variable "root_volume_size" {
   type    = number
-  default = 30
+  default = 100
 }
 
 variable "user_data" {
