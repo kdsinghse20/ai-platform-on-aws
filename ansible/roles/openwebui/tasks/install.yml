@@ -31,3 +31,5 @@
     name: open-webui
     virtualenv: "{{ openwebui_home }}/venv"
     state: latest
+  async: 1800  # Allows up to 30 minutes to complete
+  poll: 30     # Asks SSM for status updates every 30 seconds
