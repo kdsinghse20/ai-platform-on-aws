@@ -31,9 +31,9 @@
     name: open-webui
     virtualenv: "{{ openwebui_home }}/venv"
     state: latest
-    extra_args: "-q --no-cache-dir"  # -q prevents the SSM logging overflow
-  async: 1800                        # Allow up to 30 minutes
-  poll: 0                            # Fire-and-forget to prevent SSM drops
+    extra_args: "-q --no-cache-dir"
+  async: 1800
+  poll: 0
   register: openwebui_install_job
 
 - name: Wait for OpenWebUI installation to finish
@@ -41,5 +41,15 @@
     jid: "{{ openwebui_install_job.ansible_job_id }}"
   register: job_result
   until: job_result.finished
-  retries: 60                        # 60 retries * 15 seconds = 15 minutes max wait
-  delay: 15                          # Checks the status safely every 15 seconds
+  retries: 60
+  delay: 15
+
+# ADD THIS TASK BELOW TO FIX THE PERMISSION ERROR
+- name: Fix ownership of openwebui home and virtualenv recursively
+  file:
+    path: "{{ openwebui_home }}"
+    state: directory
+    owner: "{{ openwebui_user }}"
+    group: "{{ openwebui_user }}"
+    recurse: yes
+  become: yes

@@ -1,17 +1,17 @@
 [Unit]
-Description=Open WebUI
+Description=Open WebUI Service
 After=network.target
 
 [Service]
+Type=simple
 User={{ openwebui_user }}
+Group={{ openwebui_user }}
 WorkingDirectory={{ openwebui_home }}
-
-Environment=OLLAMA_BASE_URL={{ ollama_api_url }}
-Environment=WEBUI_AUTH=False
-
-ExecStart={{ openwebui_home }}/venv/bin/open-webui serve --host 0.0.0.0 --port {{ openwebui_port }}
-
+# Configures a clean data folder inside your home path
+Environment="DATA_DIR={{ openwebui_home }}/data"
+ExecStart={{ openwebui_home }}/venv/bin/open-webui serve --host 127.0.0.1 --port 8080
 Restart=always
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
