@@ -16,3 +16,7 @@ output "ollama_instance_id" {
 output "openwebui_instance_id" {
   value = module.openwebui.instance_id
 }
+
+output "alb_dns_name" {
+  value = module.alb.alb_dns_name
+}
