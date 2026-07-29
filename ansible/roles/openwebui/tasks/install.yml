@@ -26,10 +26,20 @@
     cmd: python3 -m venv {{ openwebui_home }}/venv
     creates: "{{ openwebui_home }}/venv"
 
-- name: Install OpenWebUI
+- name: Install OpenWebUI (Async Trigger)
   pip:
     name: open-webui
     virtualenv: "{{ openwebui_home }}/venv"
     state: latest
-  async: 1800  # Allows up to 30 minutes to complete
-  poll: 30     # Asks SSM for status updates every 30 seconds
+    extra_args: "-q --no-cache-dir"  # -q prevents the SSM logging overflow
+  async: 1800                        # Allow up to 30 minutes
+  poll: 0                            # Fire-and-forget to prevent SSM drops
+  register: openwebui_install_job
+
+- name: Wait for OpenWebUI installation to finish
+  async_status:
+    jid: "{{ openwebui_install_job.ansible_job_id }}"
+  register: job_result
+  until: job_result.finished
+  retries: 60                        # 60 retries * 15 seconds = 15 minutes max wait
+  delay: 15                          # Checks the status safely every 15 seconds
