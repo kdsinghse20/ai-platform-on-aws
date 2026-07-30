@@ -144,7 +144,6 @@ terraform apply
 
 ansible-playbook playbooks/site.yml
 
-## Roadmap
 
 ## Future Improvements
 
