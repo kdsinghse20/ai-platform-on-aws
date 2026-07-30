@@ -103,16 +103,16 @@ HTTPS Ready
 
 ## Project Structure
 
+```text
 ai-platform-on-aws/
-
 ├── terraform/
 │   ├── environments/
-│   ├── modules/
-│   │   ├── vpc/
-│   │   ├── ec2/
-│   │   ├── iam/
-│   │   ├── alb/
-│   │   └── security-groups/
+│   └── modules/
+│       ├── vpc/
+│       ├── ec2/
+│       ├── iam/
+│       ├── alb/
+│       └── security-groups/
 │
 ├── ansible/
 │   ├── inventory/
@@ -125,6 +125,7 @@ ai-platform-on-aws/
 │
 ├── docs/
 └── README.md
+```
 
 ## Deployment Flow ##
 
