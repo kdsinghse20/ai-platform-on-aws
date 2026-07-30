@@ -128,7 +128,7 @@ ai-platform-on-aws/
 
 ## Deployment Flow ##
 
-## Deploy
+### Deploy
 
 ### Clone Repository
 
