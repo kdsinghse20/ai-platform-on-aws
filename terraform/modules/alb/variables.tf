@@ -26,3 +26,8 @@ variable "health_check_path" {
   type    = string
   default = "/"
 }
+
+variable "certificate_arn" {
+  description = "ACM certificate ARN"
+  type        = string
+}
