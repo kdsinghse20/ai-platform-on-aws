@@ -120,5 +120,7 @@ module "alb" {
   alb_security_group_id = module.security_groups.alb_security_group_id
 
   target_instance_id = module.openwebui.instance_id
+  
+  certificate_arn = var.certificate_arn
 }
 
