@@ -1,0 +1,208 @@
+================================================================================
+                    VPC & NETWORK TOPOLOGY - AI PLATFORM
+================================================================================
+
+VPC: 10.0.0.0/16 (65,536 IP addresses)
+Region: us-east-1
+Availability Zones: us-east-1a, us-east-1b
+
+================================================================================
+                            SUBNET DESIGN
+================================================================================
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│                          VPC (10.0.0.0/16)                                 │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────────────────────┐  ┌──────────────────────────────┐       │
+│  │   PUBLIC SUBNETS (Tier 1)    │  │                              │       │
+│  │                              │  │                              │       │
+│  │  Subnet 1 (us-east-1a)       │  │  Subnet 2 (us-east-1b)       │       │
+│  │  10.0.1.0/24 (254 IPs)      │  │  10.0.2.0/24 (254 IPs)      │       │
+│  │  - Internet Gateway (IGW)    │  │  - NAT Gateway #2 + EIP      │       │
+│  │  - NAT Gateway #1 + EIP      │  │  - Multi-AZ redundancy       │       │
+│  │                              │  │                              │       │
+│  │  Route: 0.0.0.0/0 → IGW     │  │  Route: 0.0.0.0/0 → IGW     │       │
+│  └──────────────────────────────┘  └──────────────────────────────┘       │
+│                      │                                │                      │
+│  ┌───────────────────┴────────────────────────────────┴─────────┐          │
+│  │                 ALB (Application Load Balancer)              │          │
+│  │  - Ports: 80 (HTTP), 443 (HTTPS/TLS)                        │          │
+│  │  - Security Group: alb-sg (allow 80, 443 from 0.0.0.0/0)    │          │
+│  │  - Health Check: /  (every 30s)                             │          │
+│  │  - Target: OpenWebUI instance                               │          │
+│  └───────────────────┬────────────────────────────────┬─────────┘          │
+│                      │                                │                      │
+│  ┌───────────────────▼────────────────────────────────▼─────────┐          │
+│  │           PRIVATE APP SUBNETS (Tier 2)                      │          │
+│  │                                                               │          │
+│  │  ┌──────────────────────┐  ┌──────────────────────────────┐  │         │
+│  │  │  Subnet 1 (us-east-1a) │  │  Subnet 2 (us-east-1b)     │  │         │
+│  │  │  10.0.10.0/24         │  │  10.0.11.0/24              │  │         │
+│  │  │  (254 IPs)            │  │  (254 IPs, spare)          │  │         │
+│  │  │                        │  │                            │  │         │
+│  │  │  ┌──────────────────┐  │  │                            │  │         │
+│  │  │  │ OpenWebUI EC2    │  │  │  [Reserved for future]    │  │         │
+│  │  │  │                  │  │  │                            │  │         │
+│  │  │  │ Private IP:      │  │  │                            │  │         │
+│  │  │  │ 10.0.10.x        │  │  │                            │  │         │
+│  │  │  │                  │  │  │                            │  │         │
+│  │  │  │ Security Group:  │  │  │                            │  │         │
+│  │  │  │ openwebui-sg     │  │  │                            │  │         │
+│  │  │  │ - 80 from alb    │  │  │                            │  │         │
+│  │  │  │ - 11434 to ollama│  │  │                            │  │         │
+│  │  │  │ - 443 out        │  │  │                            │  │         │
+│  │  │  │                  │  │  │                            │  │         │
+│  │  │  └──────────────────┘  │  │                            │  │         │
+│  │  │                        │  │                            │  │         │
+│  │  │  Route: 0.0.0.0/0      │  │  Route: 0.0.0.0/0         │  │         │
+│  │  │  → NAT Gateway #1      │  │  → NAT Gateway #2         │  │         │
+│  │  └──────────────────────────────────────────────────────┘  │         │
+│  │                              ↓                               │          │
+│  │  ┌──────────────────────────────────────────────────────┐  │         │
+│  │  │        PRIVATE AI SUBNETS (Tier 3)                 │  │          │
+│  │  │                                                      │  │          │
+│  │  │  ┌──────────────────┐  ┌──────────────────────────┐  │         │
+│  │  │  │ Subnet 1 (us-east-1a) │  │ Subnet 2 (us-east-1b)   │ │         │
+│  │  │  │ 10.0.20.0/24       │  │ 10.0.21.0/24           │ │         │
+│  │  │  │ (254 IPs)          │  │ (254 IPs, spare)       │ │         │
+│  │  │  │                    │  │                         │ │         │
+│  │  │  │ ┌──────────────┐  │  │                         │ │         │
+│  │  │  │ │ Ollama EC2   │  │  │ [Reserved for future]  │ │         │
+│  │  │  │ │              │  │  │                         │ │         │
+│  │  │  │ │ Private IP:  │  │  │                         │ │         │
+│  │  │  │ │ 10.0.20.x    │  │  │                         │ │         │
+│  │  │  │ │              │  │  │                         │ │         │
+│  │  │  │ │ Security Gr: │  │  │                         │ │         │
+│  │  │  │ │ ollama-sg    │  │  │                         │ │         │
+│  │  │  │ │ - 11434 from │  │  │                         │ │         │
+│  │  │  │ │   openwebui  │  │  │                         │ │         │
+│  │  │  │ │ - 443 out    │  │  │                         │ │         │
+│  │  │  │ │              │  │  │                         │ │         │
+│  │  │  │ └──────────────┘  │  │                         │ │         │
+│  │  │  │                    │  │                         │ │         │
+│  │  │  │ Route: 0.0.0.0/0   │  │ Route: 0.0.0.0/0      │ │         │
+│  │  │  │ → NAT Gateway #1   │  │ → NAT Gateway #2     │ │         │
+│  │  │  └────────────────────────────────────────────────┘  │         │
+│  │  └──────────────────────────────────────────────────────┘  │         │
+│  └───────────────────────────────────────────────────────────┘          │
+│                                                                           │
+└────────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+                            ROUTING SUMMARY
+================================================================================
+
+PUBLIC ROUTE TABLE (public-rt):
+  Destination         Nexthop
+  ─────────────────────────────
+  10.0.0.0/16        Local (VPC internal)
+  0.0.0.0/0          Internet Gateway (IGW)
+
+  Associated Subnets: 10.0.1.0/24, 10.0.2.0/24
+
+PRIVATE ROUTE TABLE #1 (private-rt-1, serves AZ-a):
+  Destination         Nexthop
+  ─────────────────────────────
+  10.0.0.0/16        Local (VPC internal)
+  0.0.0.0/0          NAT Gateway #1 (in Public Subnet 1)
+
+  Associated Subnets: 10.0.10.0/24, 10.0.20.0/24
+
+PRIVATE ROUTE TABLE #2 (private-rt-2, serves AZ-b):
+  Destination         Nexthop
+  ─────────────────────────────
+  10.0.0.0/16        Local (VPC internal)
+  0.0.0.0/0          NAT Gateway #2 (in Public Subnet 2)
+
+  Associated Subnets: 10.0.11.0/24, 10.0.21.0/24
+
+================================================================================
+                         TRAFFIC FLOW PATTERNS
+================================================================================
+
+INBOUND (Internet to OpenWebUI):
+  User (external) → Route53 (DNS) → ALB (public)
+  → Security Group allows 80, 443 from 0.0.0.0/0
+  → Routed to OpenWebUI (10.0.10.x:80)
+
+INTERNAL (OpenWebUI to Ollama):
+  OpenWebUI (10.0.10.x) → Private subnets (local VPC routing)
+  → Security Group allows 11434 from openwebui-sg
+  → Routed to Ollama (10.0.20.x:11434)
+
+OUTBOUND (Ollama to Internet, for model downloads):
+  Ollama (10.0.20.x) → NAT Gateway #1 → IGW → Internet
+  → External IP: NAT Gateway EIP
+  → HTTPS (Port 443) to model registries
+
+================================================================================
+                         NETWORK SECURITY LAYERS
+================================================================================
+
+LAYER 1: VPC
+  • Private subnets prevent direct internet access
+  • NAT Gateways control outbound traffic
+  • No direct routing from compute to internet
+
+LAYER 2: Internet Gateway & NAT Gateway
+  • IGW: Only in public subnets
+  • NAT: Translates private IPs to EIP
+  • Stateful: Responses allowed back
+
+LAYER 3: Security Groups (Firewall)
+  • ALB-SG: Allow 80/443 from 0.0.0.0/0
+  • OpenWebUI-SG: Allow 80 from ALB-SG, 11434 out to Ollama-SG
+  • Ollama-SG: Allow 11434 from OpenWebUI-SG, 443 out to internet
+  • Default deny all (implicit)
+
+LAYER 4: Network ACLs (Stateless, optional)
+  • Not configured (using defaults)
+  • Could add for additional control
+
+================================================================================
+                         IP ADDRESS ALLOCATION
+================================================================================
+
+VPC CIDR: 10.0.0.0/16 (65,536 IPs)
+
+PUBLIC SUBNETS (512 IPs total):
+  Subnet 1: 10.0.1.0/24 (256 IPs)
+  Subnet 2: 10.0.2.0/24 (256 IPs)
+
+PRIVATE APP (512 IPs total):
+  Subnet 1: 10.0.10.0/24 (256 IPs)
+  Subnet 2: 10.0.11.0/24 (256 IPs)
+
+PRIVATE AI (512 IPs total):
+  Subnet 1: 10.0.20.0/24 (256 IPs)
+  Subnet 2: 10.0.21.0/24 (256 IPs)
+
+RESERVED FOR FUTURE (64,000 IPs):
+  10.0.3.0/24 - 10.0.9.0/24
+  10.0.12.0/24 - 10.0.19.0/24
+  10.0.22.0/24 - 10.0.255.0/24
+
+================================================================================
+                    AVAILABILITY ZONE REDUNDANCY
+================================================================================
+
+ZONE A (us-east-1a):
+  • Public Subnet: 10.0.1.0/24
+  • Private App: 10.0.10.0/24
+  • Private AI: 10.0.20.0/24
+  • NAT Gateway #1 with EIP
+
+ZONE B (us-east-1b):
+  • Public Subnet: 10.0.2.0/24
+  • Private App: 10.0.11.0/24
+  • Private AI: 10.0.21.0/24
+  • NAT Gateway #2 with EIP
+
+BENEFITS:
+  ✓ Survives single AZ failure
+  ✓ ALB distributes across AZs
+  ✓ Each AZ has own NAT Gateway
+  ✓ Multi-AZ best practices
+
+================================================================================

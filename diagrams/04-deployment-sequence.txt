@@ -1,0 +1,335 @@
+================================================================================
+                    DEPLOYMENT SEQUENCE & WORKFLOW
+================================================================================
+
+OVERALL DEPLOYMENT FLOW
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     PRE-DEPLOYMENT PREPARATION                         │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                           │
+│  ✓ AWS credentials configured (aws configure)                          │
+│  ✓ Terraform installed (v1.0+)                                         │
+│  ✓ Ansible installed (2.10+)                                           │
+│  ✓ ACM certificate created & validated                                 │
+│  ✓ Route53 hosted zone created (if using custom domain)                │
+│  ✓ S3 bucket for Terraform state (optional but recommended)            │
+│                                                                           │
+└─────────────────────────────────┬───────────────────────────────────────┘
+                                  │
+                    ┌─────────────▼────────────┐
+                    │   TERRAFORM PHASE       │
+                    │  (Infrastructure)       │
+                    └─────────────┬────────────┘
+                                  │
+        ┌─────────────────────────┼─────────────────────────┐
+        │                         │                         │
+        ▼                         ▼                         ▼
+    ┌─────────┐            ┌────────────┐           ┌──────────┐
+    │ Init    │ ──────→    │ Plan       │ ──────→  │ Apply    │
+    └─────────┘            └────────────┘           └──────────┘
+        │                       │                         │
+    Initialize               Review                  Create
+    Terraform                Changes                Resources
+        │                       │                         │
+        └───────────────────────┴───────────────────────┬─┘
+                                                        │
+                          ┌─────────────────────────────▼──────────────┐
+                          │   Infrastructure Created Successfully      │
+                          │  - VPC & Subnets                          │
+                          │  - Security Groups                        │
+                          │  - IAM Roles                              │
+                          │  - EC2 Instances (running)                │
+                          │  - ALB & Target Groups                    │
+                          └─────────────────────────────┬──────────────┘
+                                                        │
+                    ┌───────────────────────────────────▼────────────────┐
+                    │  Generate Ansible Inventory from Terraform       │
+                    │  terraform output -raw ansible_inventory        │
+                    └───────────────────────────────────┬────────────────┘
+                                                        │
+                    ┌─────────────────────────────────────▼────────────┐
+                    │       ANSIBLE PHASE                             │
+                    │    (Configuration Management)                  │
+                    └─────────────────────────────────────┬────────────┘
+                                                          │
+        ┌─────────────────────────────────────────────────┼────────────────────┐
+        │                                                 │                    │
+        ▼                                                 ▼                    ▼
+   ┌──────────────┐                            ┌─────────────────┐    ┌──────────┐
+   │ Connectivity │ ──────────────────────────▶│ Run Playbooks  │   │ Verify  │
+   │ Test         │ (ansible ping -all)        └─────────────────┘   │ Services │
+   └──────────────┘                                     │             └──────────┘
+                                                        │
+                      ┌─────────────────────────────────┼─────────────────────┐
+                      │                                 │                     │
+                      ▼                                 ▼                     ▼
+                ┌─────────────┐              ┌──────────────────┐   ┌──────────────┐
+                │   Common    │ ────────────▶│     Ollama       │   │  OpenWebUI   │
+                │    Role     │              │      Role        │   │      Role    │
+                │             │              └──────────────────┘   └──────────────┘
+                │ - Packages  │
+                │ - Python    │              Model Downloads     Container Setup
+                │ - Deps      │              API Configuration    Web Interface
+                │             │
+                └─────────────┘                      │                   │
+                      │                              ▼                   ▼
+                      └──────────────────────────┌──────────┐────────────┐
+                                                │  NGINX   │            │
+                                                │  Role    │            │
+                                                └────┬─────┘            │
+                                                     │                  │
+                                                     ▼                  ▼
+                                            Reverse Proxy Setup   Service Ready
+                                            SSL/TLS Config
+                                            Health Checks
+
+
+                    ┌─────────────────────────────────────────────────┐
+                    │    ALL SERVICES CONFIGURED & RUNNING            │
+                    │  ✓ Ollama running on port 11434                │
+                    │  ✓ OpenWebUI running on port 8080               │
+                    │  ✓ NGINX running on port 80/443                │
+                    │  ✓ Models loaded                               │
+                    └─────────────────────────────────────┬───────────┘
+                                                          │
+                    ┌─────────────────────────────────────▼───────────┐
+                    │  VERIFICATION PHASE                             │
+                    └─────────────────────────────────────┬───────────┘
+                                                          │
+        ┌─────────────────────────────────────────────────┼────────────────────┐
+        │                                                 │                    │
+        ▼                                                 ▼                    ▼
+   ┌──────────────┐                            ┌─────────────────┐    ┌──────────┐
+   │  Test Ollama │ ────────────────────────▶  │ Test OpenWebUI │   │ Test End  │
+   │     API      │                            │   Web UI        │   │ to End    │
+   └──────────────┘                            └─────────────────┘   └──────────┘
+   curl :11434/api/tags       curl :8080         curl via ALB DNS
+
+
+                    ┌─────────────────────────────────────────────────┐
+                    │    ✓ DEPLOYMENT COMPLETE & VERIFIED             │
+                    │    Ready for production use!                   │
+                    └─────────────────────────────────────────────────┘
+
+================================================================================
+                       DETAILED TERRAFORM PHASE
+================================================================================
+
+TERRAFORM INIT
+  └─→ cd terraform/environments/dev
+  └─→ terraform init
+  └─→ Downloads AWS provider plugin
+  └─→ Initializes .terraform/ directory
+  └─→ Configures backend for state
+  └─→ Reads variables from terraform.tfvars
+
+TERRAFORM PLAN
+  └─→ terraform plan -out=tfplan
+  └─→ Analyzes current state vs desired state
+  └─→ Creates execution plan
+  └─→ Shows resources to create/modify/destroy
+  └─→ User reviews for correctness
+
+TERRAFORM APPLY
+  └─→ terraform apply tfplan
+  └─→ Executes creation plan in dependency order:
+      1. VPC Module
+         ├─ Create VPC
+         ├─ Create Subnets (3 tiers)
+         ├─ Create Internet Gateway
+         ├─ Create NAT Gateways
+         └─ Create Route Tables
+      │
+      2. Security Groups Module
+         ├─ Create ALB Security Group
+         ├─ Create OpenWebUI Security Group
+         └─ Create Ollama Security Group
+      │
+      3. IAM Module
+         ├─ Create EC2 Service Role
+         ├─ Create Instance Profile
+         └─ Attach Policies
+      │
+      4. EC2 Module × 2
+         ├─ Launch OpenWebUI Instance
+         │  ├─ Attach to Private App Subnet
+         │  ├─ Attach Security Group
+         │  └─ Attach IAM Instance Profile
+         │
+         └─ Launch Ollama Instance
+            ├─ Attach to Private AI Subnet
+            ├─ Attach Security Group
+            └─ Attach IAM Instance Profile
+      │
+      5. ALB Module
+         ├─ Create Application Load Balancer
+         ├─ Create Target Groups
+         ├─ Create HTTP Listener (redirect)
+         ├─ Create HTTPS Listener
+         └─ Configure Health Checks
+
+  └─→ Outputs generated:
+      • VPC ID
+      • Subnet IDs
+      • Instance IPs
+      • ALB DNS Name
+      • Security Group IDs
+      • IAM Role ARNs
+      • Ansible Inventory
+
+GENERATE ANSIBLE INVENTORY
+  └─→ terraform output -raw ansible_inventory > ansible_inventory.yml
+  └─→ Creates inventory file with instance details
+  └─→ Includes private IPs, instance IDs, host groups
+
+================================================================================
+                       DETAILED ANSIBLE PHASE
+================================================================================
+
+CONNECTIVITY TEST
+  └─→ ansible all -m ping -i inventory/hosts.yml
+  └─→ Verifies SSH connectivity to all instances
+  └─→ Expected output: "pong" from all hosts
+
+RUN PLAYBOOKS (in order):
+
+1. COMMON PLAYBOOK
+   └─→ ansible-playbook playbooks/common.yml
+   └─→ Runs Common Role on ALL hosts
+   └─→ Tasks:
+       ├─ Update system packages (apt update, apt upgrade)
+       ├─ Install system dependencies
+       ├─ Install Python 3
+       ├─ Install pip
+       ├─ Configure sudoers
+       ├─ Set timezone
+       └─ Install monitoring tools
+
+2. OLLAMA PLAYBOOK
+   └─→ ansible-playbook playbooks/ollama.yml
+   └─→ Runs Ollama Role on OLLAMA hosts only
+   └─→ Sub-tasks:
+       ├─ install.yml
+       │  ├─ Download Ollama binary
+       │  ├─ Install to /usr/bin/
+       │  ├─ Create ollama user
+       │  └─ Setup directories
+       │
+       ├─ configure.yml
+       │  ├─ Create systemd service
+       │  ├─ Set environment variables
+       │  ├─ Configure port 11434
+       │  └─ Setup logging
+       │
+       ├─ models.yml
+       │  ├─ Pull Gemma 3 model
+       │  ├─ Pull Llama 3.2 model
+       │  └─ Verify models loaded
+       │
+       └─ verify.yml
+          ├─ Check service running
+          ├─ Test API connectivity
+          └─ Verify models accessible
+
+3. OPENWEBUI PLAYBOOK
+   └─→ ansible-playbook playbooks/openwebui.yml
+   └─→ Runs OpenWebUI Role on OPENWEBUI hosts only
+   └─→ Sub-tasks:
+       ├─ install.yml
+       │  ├─ Install Docker
+       │  ├─ Install Docker Compose
+       │  ├─ Create directories
+       │  └─ Setup volumes
+       │
+       ├─ configure.yml
+       │  ├─ Create docker-compose.yml
+       │  ├─ Configure Ollama endpoint
+       │  ├─ Set web port to 8080
+       │  └─ Configure environment
+       │
+       ├─ models.yml
+       │  ├─ Configure model discovery
+       │  └─ Verify Ollama connectivity
+       │
+       └─ verify.yml
+          ├─ Check Docker running
+          ├─ Verify container health
+          └─ Test web interface
+
+4. NGINX PLAYBOOK
+   └─→ ansible-playbook playbooks/nginx.yml
+   └─→ Runs NGINX Role on OPENWEBUI hosts
+   └─→ Sub-tasks:
+       ├─ install.yml
+       │  ├─ Install NGINX
+       │  └─ Enable systemd service
+       │
+       ├─ configure.yml
+       │  ├─ Create nginx.conf
+       │  ├─ Setup reverse proxy
+       │  ├─ Configure upstream
+       │  └─ Set up SSL/TLS
+       │
+       ├─ ssl.yml
+       │  ├─ Install certificates
+       │  ├─ Configure HTTPS
+       │  └─ Setup redirects
+       │
+       └─ verify.yml
+          ├─ Test nginx config
+          ├─ Check service running
+          └─ Verify connectivity
+
+================================================================================
+                       VERIFICATION PHASE DETAILS
+================================================================================
+
+1. TEST OLLAMA
+   └─→ ssh to Ollama instance (via SSM)
+   └─→ curl -s http://localhost:11434/api/tags
+   └─→ Expected output: JSON with loaded models
+
+2. TEST OPENWEBUI
+   └─→ ssh to OpenWebUI instance (via SSM)
+   └─→ curl -s http://localhost:8080
+   └─→ Expected output: HTML content (web interface)
+
+3. TEST NGINX
+   └─→ curl -I http://instance:80
+   └─→ Expected output: HTTP/1.1 200 OK
+
+4. TEST ALB
+   └─→ curl -k https://alb-dns-name
+   └─→ Expected output: OpenWebUI HTML response
+
+5. FULL END-TO-END TEST
+   └─→ Open browser
+   └─→ Navigate to https://yourdomain.com (or ALB DNS)
+   └─→ Type a question
+   └─→ Verify response from Ollama model
+
+================================================================================
+                          TIME ESTIMATES
+================================================================================
+
+TERRAFORM:
+  terraform init                 ~2 minutes
+  terraform plan                 ~2 minutes
+  terraform apply                ~15-20 minutes
+  Generate inventory             ~1 minute
+  Subtotal                       ~20-25 minutes
+
+ANSIBLE:
+  Test connectivity              ~1 minute
+  Common playbook                ~5-10 minutes
+  Ollama playbook (with models)  ~10-15 minutes (model download time)
+  OpenWebUI playbook             ~5-10 minutes
+  NGINX playbook                 ~2-5 minutes
+  Verification                   ~5-10 minutes
+  Subtotal                       ~30-50 minutes
+
+TOTAL DEPLOYMENT TIME:           ~50-75 minutes
+
+================================================================================

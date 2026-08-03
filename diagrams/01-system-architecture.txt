@@ -1,0 +1,181 @@
+================================================================================
+                       AI PLATFORM - SYSTEM ARCHITECTURE
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                          USERS / EXTERNAL TRAFFIC                   │
+│                      (Browser HTTPS Requests)                       │
+└─────────────────────────┬───────────────────────────────────────────┘
+                          │
+                ┌─────────▼──────────┐
+                │   Route53 (DNS)    │
+                │ Resolves domain    │
+                └─────────┬──────────┘
+                          │
+            ┌─────────────▼──────────────┐
+            │  AWS ACM SSL Certificate   │
+            │ (TLS Encryption Setup)     │
+            └─────────────┬──────────────┘
+                          │
+        ┌───────────────────▼──────────────────┐
+        │  AWS Application Load Balancer       │
+        │  (PUBLIC - Internet-Facing)          │
+        │                                      │
+        │  Port 80  (HTTP → HTTPS redirect)   │
+        │  Port 443 (HTTPS/TLS termination)   │
+        │                                      │
+        │  Located in PUBLIC SUBNETS           │
+        └───────────────────┬──────────────────┘
+                            │
+        ┌───────────────────▼──────────────────────────┐
+        │        AWS VPC (10.0.0.0/16)                 │
+        │                                              │
+        │  ┌──────────────────────────────────────┐   │
+        │  │  PUBLIC SUBNETS (Tier 1)             │   │
+        │  │  10.0.1.0/24, 10.0.2.0/24           │   │
+        │  │  - Internet Gateway attached        │   │
+        │  │  - NAT Gateways (for outbound)      │   │
+        │  │  - ALB, Route53 traffic here        │   │
+        │  └──────────────────────────────────────┘   │
+        │                    │                         │
+        │  ┌─────────────────▼──────────────────────┐ │
+        │  │  PRIVATE APP SUBNETS (Tier 2)         │ │
+        │  │  10.0.10.0/24, 10.0.11.0/24          │ │
+        │  │  Access: Via ALB only                 │ │
+        │  │                                       │ │
+        │  │  ┌────────────────────────────────┐  │ │
+        │  │  │ OpenWebUI EC2 Instance         │  │ │
+        │  │  │ (t3.large)                     │  │ │
+        │  │  │                                │  │ │
+        │  │  │ ├─ NGINX (Reverse Proxy)      │  │ │
+        │  │  │ │  Port: 80                   │  │ │
+        │  │  │ │                              │  │ │
+        │  │  │ ├─ OpenWebUI App              │  │ │
+        │  │  │ │  Port: 8080 (internal)      │  │ │
+        │  │  │ │                              │  │ │
+        │  │  │ └─ SSM Session Manager        │  │ │
+        │  │  │    (no SSH key needed)        │  │ │
+        │  │  │                                │  │ │
+        │  │  └────────────────────────────────┘  │ │
+        │  └─────────────────┬──────────────────────┘ │
+        │                    │ (Private Network)      │
+        │  ┌─────────────────▼──────────────────────┐ │
+        │  │  PRIVATE AI SUBNETS (Tier 3)          │ │
+        │  │  10.0.20.0/24, 10.0.21.0/24           │ │
+        │  │  Access: From OpenWebUI only          │ │
+        │  │                                       │ │
+        │  │  ┌────────────────────────────────┐  │ │
+        │  │  │ Ollama EC2 Instance            │  │ │
+        │  │  │ (t3.large)                     │  │ │
+        │  │  │                                │  │ │
+        │  │  │ ├─ Ollama Runtime              │  │ │
+        │  │  │ │  Port: 11434 (API)           │  │ │
+        │  │  │ │                              │  │ │
+        │  │  │ ├─ AI Models                   │  │ │
+        │  │  │ │  • Gemma 3                   │  │ │
+        │  │  │ │  • Llama 3.2                 │  │ │
+        │  │  │ │                              │  │ │
+        │  │  │ └─ SSM Session Manager        │  │ │
+        │  │  │    (no SSH key needed)        │  │ │
+        │  │  │                                │  │ │
+        │  │  └────────────────────────────────┘  │ │
+        │  └────────────────────────────────────────┘ │
+        │                                              │
+        └──────────────────────────────────────────────┘
+
+================================================================================
+                              DATA FLOW SUMMARY
+================================================================================
+
+REQUEST FLOW (User to Models):
+  1. User → HTTPS to ALB (encrypted)
+  2. ALB → Terminates TLS/SSL
+  3. ALB → HTTP to NGINX (internal, private)
+  4. NGINX → Reverse proxy to OpenWebUI:8080
+  5. OpenWebUI → HTTP to Ollama:11434 (private network)
+  6. Ollama → Queries AI Models
+  7. Response → Back through reverse flow
+
+RESPONSE FLOW (Models to User):
+  1. Ollama → JSON response to OpenWebUI
+  2. OpenWebUI → HTML response to NGINX
+  3. NGINX → HTTP response to ALB
+  4. ALB → Encrypts with TLS
+  5. ALB → HTTPS response to User
+
+================================================================================
+                           SECURITY CHARACTERISTICS
+================================================================================
+
+✅ IMPLEMENTED:
+  • All compute instances in PRIVATE subnets (no public IPs)
+  • Only ALB exposed to internet
+  • Security group-based firewall rules
+  • HTTPS for all external communication
+  • Private network for internal communication
+  • IAM least privilege (SSM access)
+  • No SSH key exposure
+  • Multi-AZ redundancy
+  • Health checks for high availability
+  • TLS 1.2+ encryption
+
+KEY SECURITY FEATURES:
+  • OpenWebUI ← Only accessible from ALB (security group)
+  • Ollama ← Only accessible from OpenWebUI (security group)
+  • Internet ← Only port 80 (redirect) and 443 (HTTPS) open
+  • NAT Gateways ← Outbound internet for model downloads
+  • Database/State ← None in this setup (stateless design)
+
+================================================================================
+                              DEPLOYMENT FLOW
+================================================================================
+
+PHASE 1 - INFRASTRUCTURE (Terraform):
+  VPC Module → Creates network foundation
+        ↓
+  Security Groups Module → Creates firewall rules
+        ↓
+  IAM Module → Creates permissions
+        ↓
+  EC2 Module × 2 → Launches instances
+        ↓
+  ALB Module → Creates load balancer
+        ↓
+  ✓ Infrastructure Ready
+
+PHASE 2 - CONFIGURATION (Ansible):
+  Common Role → System setup
+        ↓
+  Ollama Role → Install AI runtime
+        ↓
+  OpenWebUI Role → Install web UI
+        ↓
+  NGINX Role → Configure reverse proxy
+        ↓
+  ✓ Services Ready
+
+PHASE 3 - VERIFICATION:
+  Test Ollama API → curl http://localhost:11434/api/tags
+  Test OpenWebUI → curl http://localhost:8080
+  Test NGINX → nginx -t && systemctl status nginx
+  Test End-to-End → Use ALB DNS to access application
+
+================================================================================
+                          SCALABILITY NOTES
+================================================================================
+
+CURRENT STATE (Development):
+  • Single instance per service
+  • Suitable for testing and development
+  • No auto-scaling
+
+FUTURE IMPROVEMENTS:
+  • Auto Scaling Groups for EC2
+  • Multiple OpenWebUI instances behind ALB
+  • EFS for shared model storage
+  • RDS for state/database
+  • ElastiCache for caching
+  • CloudFront for content distribution
+  • Multi-region deployment
+
+================================================================================

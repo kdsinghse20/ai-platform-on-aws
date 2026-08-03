@@ -1,0 +1,392 @@
+================================================================================
+                        SECURITY GROUPS ARCHITECTURE
+================================================================================
+
+OVERVIEW: Three Security Groups with Specific Rules for Network Isolation
+
+================================================================================
+                          ALB SECURITY GROUP
+================================================================================
+
+Name: alb-sg
+Purpose: Controls traffic to Application Load Balancer
+Location: Attached to ALB in public subnets
+VPC: ai-ollama (10.0.0.0/16)
+
+INBOUND RULES:
+┌──────────────────────────────────────────────────────────────────────┐
+│ Rule  │ Type       │ Protocol │ Port │ Source              │ Desc    │
+├──────┼────────────┼──────────┼──────┼─────────────────────┼─────────┤
+│ 100  │ HTTP       │ TCP      │ 80   │ 0.0.0.0/0          │ Internet│
+│ 200  │ HTTPS      │ TCP      │ 443  │ 0.0.0.0/0          │ Internet│
+└──────┴────────────┴──────────┴──────┴─────────────────────┴─────────┘
+
+OUTBOUND RULES:
+┌──────────────────────────────────────────────────────────────────────┐
+│ Rule │ Type      │ Protocol │ Port │ Destination         │ Desc     │
+├──────┼───────────┼──────────┼──────┼─────────────────────┼──────────┤
+│ 100  │ HTTP      │ TCP      │ 80   │ openwebui-sg        │ To Targets
+└──────┴───────────┴──────────┴──────┴─────────────────────┴──────────┘
+
+KEY POINTS:
+  ✓ Accepts traffic from entire internet (0.0.0.0/0)
+  ✓ Only forwards HTTP (port 80) to backend targets
+  ✓ HTTPS (443) terminated at ALB (TLS offloading)
+  ✓ Default deny all other traffic
+
+================================================================================
+                        OPENWEBUI SECURITY GROUP
+================================================================================
+
+Name: openwebui-sg
+Purpose: Controls traffic to OpenWebUI instance
+Location: Attached to OpenWebUI EC2 in private app subnet
+VPC: ai-ollama (10.0.0.0/16)
+
+INBOUND RULES:
+┌───────────────────────────────────────────────────────────────────────┐
+│ Rule  │ Type      │ Protocol │ Port │ Source              │ Desc     │
+├───────┼───────────┼──────────┼──────┼─────────────────────┼──────────┤
+│ 100   │ HTTP      │ TCP      │ 80   │ alb-sg              │ From ALB │
+│ 200   │ SSH       │ TCP      │ 22   │ AWS Systems Mgr     │ SSM Access
+└───────┴───────────┴──────────┴──────┴─────────────────────┴──────────┘
+
+OUTBOUND RULES:
+┌───────────────────────────────────────────────────────────────────────┐
+│ Rule │ Type      │ Protocol │ Port │ Destination         │ Desc      │
+├──────┼───────────┼──────────┼──────┼─────────────────────┼───────────┤
+│ 100  │ Ollama API│ TCP      │11434 │ ollama-sg           │ To Ollama │
+│ 200  │ HTTPS     │ TCP      │ 443  │ 0.0.0.0/0          │ Internet  │
+│ 300  │ DNS       │ UDP      │ 53   │ 0.0.0.0/0          │ DNS       │
+└──────┴───────────┴──────────┴──────┴─────────────────────┴───────────┘
+
+KEY POINTS:
+  ✓ Inbound only from ALB (port 80)
+  ✓ No direct internet access on port 80
+  ✓ Can reach Ollama on port 11434
+  ✓ Can reach internet for external APIs (port 443)
+  ✓ SSH only via AWS Systems Manager (port 22)
+  ✓ Can access DNS (port 53)
+
+================================================================================
+                         OLLAMA SECURITY GROUP
+================================================================================
+
+Name: ollama-sg
+Purpose: Controls traffic to Ollama instance
+Location: Attached to Ollama EC2 in private AI subnet
+VPC: ai-ollama (10.0.0.0/16)
+
+INBOUND RULES:
+┌───────────────────────────────────────────────────────────────────────┐
+│ Rule  │ Type      │ Protocol │ Port │ Source              │ Desc     │
+├───────┼───────────┼──────────┼──────┼─────────────────────┼──────────┤
+│ 100   │ Ollama API│ TCP      │11434 │ openwebui-sg        │ From UI  │
+│ 200   │ SSH       │ TCP      │ 22   │ AWS Systems Mgr     │ SSM Access
+└───────┴───────────┴──────────┴──────┴─────────────────────┴──────────┘
+
+OUTBOUND RULES:
+┌───────────────────────────────────────────────────────────────────────┐
+│ Rule │ Type      │ Protocol │ Port │ Destination         │ Desc      │
+├──────┼───────────┼──────────┼──────┼─────────────────────┼───────────┤
+│ 100  │ HTTPS     │ TCP      │ 443  │ 0.0.0.0/0          │ Downloads │
+│ 200  │ DNS       │ UDP      │ 53   │ 0.0.0.0/0          │ DNS       │
+└──────┴───────────┴──────────┴──────┴─────────────────────┴───────────┘
+
+KEY POINTS:
+  ✓ Inbound only from OpenWebUI (port 11434)
+  ✓ No direct internet access (except for model downloads via HTTPS)
+  ✓ Completely isolated from public internet
+  ✓ SSH only via AWS Systems Manager (port 22)
+  ✓ Can download models via HTTPS (port 443)
+  ✓ Can access DNS (port 53)
+
+================================================================================
+                         SECURITY GROUP MATRIX
+================================================================================
+
+                    TO ALB-SG    TO OPENWEBUI-SG    TO OLLAMA-SG
+                    ───────────  ──────────────────  ──────────────
+FROM INTERNET:        80 (HTTP)        ✗                ✗
+                     443 (HTTPS)
+
+FROM ALB-SG:           ✗             80 (HTTP)         ✗
+
+FROM OPENWEBUI-SG:     ✗               ✗           11434 (API)
+
+FROM OLLAMA-SG:        ✗               ✗               ✗
+
+
+LEGEND:
+  ✓ = Allowed by security group rule
+  ✗ = Denied (implicit deny)
+
+================================================================================
+                      INTER-SERVICE COMMUNICATION
+================================================================================
+
+COMMUNICATION PATH 1: Internet → ALB
+  ┌────────────┐
+  │  Internet  │ (0.0.0.0/0)
+  └─────┬──────┘
+        │
+   Port 80 (HTTP)
+   Port 443 (HTTPS)
+        │
+        ▼
+  ┌────────────────┐
+  │  ALB-SG Rule   │ ✓ ALLOWED
+  │ (Port 80, 443) │
+  └─────┬──────────┘
+        │
+        ▼
+  ┌────────────────┐
+  │ ALB Instance   │ ✓ RECEIVES
+  └────────────────┘
+
+COMMUNICATION PATH 2: ALB → OpenWebUI
+  ┌────────────┐
+  │ ALB-SG     │ (Source: alb-sg)
+  └─────┬──────┘
+        │
+   Port 80 (HTTP)
+   (internal)
+        │
+        ▼
+  ┌────────────────────────────┐
+  │  OpenWebUI-SG Rule         │ ✓ ALLOWED
+  │ (Port 80 from alb-sg)      │
+  └─────┬──────────────────────┘
+        │
+        ▼
+  ┌────────────────┐
+  │ OpenWebUI Inst │ ✓ RECEIVES
+  │ (NGINX:80)     │
+  └────────────────┘
+
+COMMUNICATION PATH 3: OpenWebUI → Ollama
+  ┌────────────────┐
+  │ OpenWebUI-SG   │ (Source: openwebui-sg)
+  └─────┬──────────┘
+        │
+   Port 11434 (Ollama API)
+   (internal)
+        │
+        ▼
+  ┌────────────────────────────┐
+  │  Ollama-SG Rule            │ ✓ ALLOWED
+  │ (Port 11434 from openwebui-sg) │
+  └─────┬──────────────────────┘
+        │
+        ▼
+  ┌────────────────┐
+  │ Ollama Instance│ ✓ RECEIVES
+  │ (Port 11434)   │
+  └────────────────┘
+
+COMMUNICATION PATH 4: Instances → Internet (Outbound)
+  ┌────────────────────┐
+  │ OpenWebUI/Ollama   │ (Source: respective-sg)
+  │ Instance           │
+  └─────┬──────────────┘
+        │
+   Port 443 (HTTPS)
+   Port 53 (DNS)
+        │
+        ▼
+  ┌────────────────────────────┐
+  │  openwebui-sg Rule         │ ✓ ALLOWED
+  │  (Port 443, 53 to internet)│
+  │                            │
+  │  ollama-sg Rule            │ ✓ ALLOWED
+  │  (Port 443, 53 to internet)│
+  └─────┬──────────────────────┘
+        │
+        ▼
+  ┌────────────────┐
+  │ NAT Gateway    │ (Outbound only)
+  └─────┬──────────┘
+        │
+        ▼
+  ┌────────────────┐
+  │ Internet       │ ✓ ACCESSIBLE
+  └────────────────┘
+
+================================================================================
+                    DENIED COMMUNICATION PATTERNS
+================================================================================
+
+SCENARIO 1: Direct Internet to OpenWebUI (Blocked)
+  ┌────────────┐
+  │  Internet  │
+  └─────┬──────┘
+        │
+   (No security group rule)
+        │
+        ▼
+  ┌──────────────────┐
+  │ OpenWebUI-SG     │ ✗ BLOCKED
+  │ (No inbound rule)│
+  └──────────────────┘
+  Result: User gets connection refused or timeout
+
+SCENARIO 2: Direct Internet to Ollama (Blocked)
+  ┌────────────┐
+  │  Internet  │
+  └─────┬──────┘
+        │
+   (No security group rule)
+        │
+        ▼
+  ┌──────────────────┐
+  │ Ollama-SG        │ ✗ BLOCKED
+  │ (No inbound rule)│
+  └──────────────────┘
+  Result: API calls fail immediately
+
+SCENARIO 3: OpenWebUI to Internet (Limited)
+  ┌───────────────┐
+  │ OpenWebUI     │
+  └─────┬─────────┘
+        │
+   Trying port 22 (SSH)
+   port 3306 (MySQL)
+   port 5432 (PostgreSQL)
+        │
+        ▼
+  ┌──────────────────────────┐
+  │ openwebui-sg Outbound    │ ✗ BLOCKED
+  │ (Only 443, 53 allowed)   │
+  └──────────────────────────┘
+  Result: Connection times out
+
+================================================================================
+                        DEFAULT RULES (AWS)
+================================================================================
+
+IMPLICIT OUTBOUND ALLOW (if not explicitly denied):
+  Every security group allows all outbound traffic by default:
+    Protocol: All
+    Port Range: All
+    Destination: 0.0.0.0/0
+
+  This can be restricted by adding explicit outbound rules.
+
+IMPLICIT INBOUND DENY (All traffic):
+  Every security group denies all inbound traffic by default:
+    Unless explicitly allowed by a rule
+    Rules are additive (OR, not AND)
+    First matching rule applied
+
+================================================================================
+                      SECURITY GROUP BEST PRACTICES
+================================================================================
+
+✓ IMPLEMENTED IN THIS DESIGN:
+
+  1. Least Privilege
+     • Each SG has only required rules
+     • No unnecessary ports open
+
+  2. Explicit Allow
+     • Default deny all
+     • Only explicitly allowed traffic passes
+
+  3. Service-to-Service Rules
+     • Use SG references (not CIDR)
+     • ALB-SG → OpenWebUI-SG
+     • OpenWebUI-SG → Ollama-SG
+
+  4. Restrict Outbound
+     • OpenWebUI only to Ollama + Internet APIs
+     • Ollama only to Internet (model downloads)
+
+  5. No SSH Exposure
+     • Port 22 for Systems Manager only
+     • No hardcoded SSH CIDR ranges
+
+  6. Stateful Rules
+     • Responses automatically allowed
+     • No need for explicit return rules
+
+  7. Descriptive Names
+     • Clear service identification
+     • alb-sg, openwebui-sg, ollama-sg
+
+  8. Audit Trail
+     • VPC Flow Logs can track denied traffic
+     • CloudTrail logs SG changes
+
+================================================================================
+                    TROUBLESHOOTING CONNECTIVITY ISSUES
+================================================================================
+
+IF USERS CAN'T REACH THE APPLICATION:
+
+1. Check ALB-SG
+   └─→ Verify port 80 and 443 allow 0.0.0.0/0
+   └─→ Verify outbound allows port 80 to openwebui-sg
+
+2. Check OpenWebUI-SG
+   └─→ Verify inbound port 80 allows alb-sg
+   └─→ Verify NGINX is listening on port 80
+
+3. Check ALB Status
+   └─→ Verify ALB is active
+   └─→ Verify targets are healthy
+
+IF OPENWEBUI CAN'T REACH OLLAMA:
+
+1. Check OpenWebUI-SG
+   └─→ Verify outbound port 11434 allows ollama-sg
+   └─→ Verify no outbound deny rules
+
+2. Check Ollama-SG
+   └─→ Verify inbound port 11434 allows openwebui-sg
+   └─→ Verify Ollama service is running
+
+3. Check Network
+   └─→ Verify both in same VPC
+   └─→ Check route table for private subnets
+
+IF MODELS WON'T DOWNLOAD:
+
+1. Check Ollama-SG
+   └─→ Verify outbound port 443 allows 0.0.0.0/0
+   └─→ Verify outbound port 53 allows 0.0.0.0/0 (DNS)
+
+2. Check NAT Gateway
+   └─→ Verify NAT Gateway is in running state
+   └─→ Verify route table points to NAT
+
+3. Check Disk Space
+   └─→ Verify sufficient space for model downloads
+
+================================================================================
+                    MONITORING SECURITY GROUPS
+================================================================================
+
+VPC FLOW LOGS:
+  Captures all traffic (accepted and rejected)
+  Enables troubleshooting connectivity issues
+  Shows source/destination IPs, ports, protocol
+
+CLOUDTRAIL:
+  Logs all security group modifications
+  Tracks who changed rules and when
+  Auditing and compliance tracking
+
+SECURITY GROUP VISUALIZATION:
+  Use AWS Console to view:
+    • All inbound rules
+    • All outbound rules
+    • Associated instances
+    • Tags and descriptions
+
+PERIODIC AUDIT:
+  Quarterly review of:
+    • Unused security groups
+    • Overly permissive rules
+    • Obsolete service connections
+
+================================================================================

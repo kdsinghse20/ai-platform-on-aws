@@ -1,0 +1,272 @@
+================================================================================
+                   DATA FLOW & COMPONENT INTERACTION
+================================================================================
+
+USER REQUEST FLOW (Step by Step)
+================================================================================
+
+1. USER INITIATES REQUEST
+   └─→ Opens browser, types: https://ai.yourdomain.com
+
+2. DNS RESOLUTION
+   Route53 (DNS)
+   └─→ Resolves ai.yourdomain.com → ALB DNS Name
+   └─→ Returns: ai-platform-xxx.elb.us-east-1.amazonaws.com
+
+3. TLS/HTTPS ESTABLISHMENT
+   User ↔ ALB (bidirectional)
+   └─→ TLS Handshake (HTTPS)
+   └─→ ACM Certificate used for encryption
+   └─→ TLS 1.2+ negotiation
+   └─→ Session established
+
+4. HTTP REQUEST (inside TLS tunnel)
+   User → ALB (encrypted)
+   └─→ HTTP GET /
+   └─→ Headers included
+   └─→ Fully encrypted
+
+5. ALB PROCESSING
+   ALB receives encrypted request
+   └─→ Terminates SSL/TLS (decrypts)
+   └─→ Converts to HTTP
+   └─→ Route 53 target group rule
+   └─→ Checks health of targets
+   └─→ Selects OpenWebUI instance
+
+6. ALB → OpenWebUI INTERNAL ROUTING
+   ALB → OpenWebUI (10.0.10.x:80)
+   └─→ Private network (no internet)
+   └─→ HTTP only (unencrypted, internal)
+   └─→ Security Group allows (ALB-SG → OpenWebUI-SG)
+   └─→ Direct routing (same VPC)
+
+7. OPENWEBUI PROCESSING
+   NGINX (Reverse Proxy)
+   ├─→ Receives HTTP request
+   ├─→ Adds headers (X-Real-IP, X-Forwarded-For, etc.)
+   ├─→ Routes to OpenWebUI backend (127.0.0.1:8080)
+   │
+   OpenWebUI Application
+   ├─→ Receives request
+   ├─→ Processes user query
+   ├─→ Determines model action
+   └─→ Prepares API call to Ollama
+
+8. OPENWEBUI → OLLAMA API CALL
+   OpenWebUI (10.0.10.x) → Ollama (10.0.20.x:11434)
+   └─→ HTTP POST /api/generate
+   └─→ Private network routing
+   └─→ Security Group allows (OpenWebUI-SG → Ollama-SG)
+   └─→ No encryption (internal, trusted network)
+   └─→ JSON payload with model query
+
+9. OLLAMA PROCESSING
+   Ollama Runtime
+   ├─→ Receives API request
+   ├─→ Loads model (Gemma 3 or Llama 3.2)
+   ├─→ Processes query through model
+   ├─→ Generates response
+   └─→ Returns JSON response
+
+10. RESPONSE FLOW (Ollama → OpenWebUI)
+    Ollama (10.0.20.x) → OpenWebUI (10.0.10.x)
+    └─→ HTTP response (JSON)
+    └─→ Model output included
+    └─→ Direct VPC routing
+
+11. OPENWEBUI RESPONSE PROCESSING
+    OpenWebUI Application
+    ├─→ Receives Ollama response
+    ├─→ Formats HTML response
+    ├─→ Sends to NGINX
+    │
+    NGINX
+    ├─→ Receives response
+    ├─→ Passes through reverse proxy
+    └─→ Sends to ALB
+
+12. ALB RESPONSE TO USER
+    ALB receives response from OpenWebUI
+    ├─→ Adds response headers
+    ├─→ Encrypts with TLS
+    └─→ Sends via HTTPS to user
+
+13. USER RECEIVES RESPONSE
+    User browser
+    ├─→ Decrypts TLS
+    ├─→ Receives HTML
+    ├─→ Renders page with response
+    └─→ Displays model output to user
+
+================================================================================
+                      COMPLETE REQUEST/RESPONSE TIMELINE
+================================================================================
+
+TIME  COMPONENT           ACTION
+────────────────────────────────────────────────────────────────────────────
+T=0   User Browser       [USER] Types query and hits "send"
+
+T=1   Route53            Resolves domain to ALB DNS name
+
+T=2   User ↔ ALB         TLS Handshake + Certificate verification
+
+T=3   User → ALB         [ENCRYPTED] Sends HTTP request
+
+T=4   ALB                Terminates TLS, decrypts request
+
+T=5   ALB Health Check   Verifies OpenWebUI instance is healthy
+
+T=6   ALB → OpenWebUI    [INTERNAL] Routes to instance:80 (via NGINX)
+
+T=7   NGINX              Reverse proxy processes request
+
+T=8   OpenWebUI App      Receives request, prepares Ollama API call
+
+T=9   OpenWebUI → Ollama [INTERNAL] HTTP POST to 10.0.20.x:11434
+
+T=10  Ollama             Processes through AI model (variable time)
+
+T=11  Ollama → OpenWebUI [INTERNAL] Returns JSON response
+
+T=12  OpenWebUI App      Formats response for browser
+
+T=13  OpenWebUI → NGINX  Sends HTML response
+
+T=14  NGINX              Reverse proxy processes response
+
+T=15  NGINX → ALB        [INTERNAL] Returns to load balancer
+
+T=16  ALB                Encrypts response with TLS
+
+T=17  ALB → User         [ENCRYPTED] Sends response via HTTPS
+
+T=18  User Browser       Decrypts and displays response
+
+Total Time: ~T+18 (mostly depends on Ollama processing time)
+
+================================================================================
+                     COMPONENT INTERACTION MATRIX
+================================================================================
+
+                  USER  ROUTE53  ALB  NGINX  WEBUI  OLLAMA  MODELS
+                  ────  ──────  ───  ─────  ─────  ──────  ──────
+USER               -     →       →     ←      ←      -       -
+ROUTE53           ←     -       -     -      -      -       -
+ALB               ←     ←       -     →      →      -       -
+NGINX             →     -       ←     -      →      -       -
+WEBUI             →     -       ←     ←      -      →       -
+OLLAMA            -     -       -     -      ←      -       →
+MODELS            -     -       -     -      -      ←       -
+
+Legend:
+  → : Sends to
+  ← : Receives from
+  - : No direct communication
+
+================================================================================
+                    SECURITY GROUP COMMUNICATION RULES
+================================================================================
+
+ALB-SG ↔ OPENWEBUI-SG
+  Direction: ALB → OpenWebUI
+  Protocol: TCP
+  Port: 80
+  Security Group Rule: "Port 80 from ALB-SG"
+  Status: ✓ ALLOWED
+
+OPENWEBUI-SG ↔ OLLAMA-SG
+  Direction: OpenWebUI → Ollama
+  Protocol: TCP
+  Port: 11434
+  Security Group Rule: "Port 11434 from OpenWebUI-SG"
+  Status: ✓ ALLOWED
+
+OPENWEBUI-SG ↔ INTERNET
+  Direction: OpenWebUI → Internet
+  Protocol: TCP
+  Port: 443 (HTTPS)
+  Security Group Rule: "Port 443 to 0.0.0.0/0"
+  Status: ✓ ALLOWED (for external APIs, if needed)
+
+OLLAMA-SG ↔ INTERNET
+  Direction: Ollama → Internet
+  Protocol: TCP
+  Port: 443 (HTTPS)
+  Security Group Rule: "Port 443 to 0.0.0.0/0"
+  Status: ✓ ALLOWED (for model downloads)
+
+================================================================================
+                     NETWORK LATENCY CONSIDERATIONS
+================================================================================
+
+COMPONENT              LATENCY          NOTES
+──────────────────────────────────────────────────────────────────────────
+DNS Resolution         ~10-50ms         Route53 → ALB DNS
+TLS Handshake          ~10-50ms         HTTPS establishment
+ALB Processing         ~1-10ms          Health check, routing
+ALB → OpenWebUI        <1ms             Same VPC, private network
+NGINX Processing       ~1-5ms           Reverse proxy overhead
+OpenWebUI → Ollama     <1ms             Same VPC, private network
+Ollama Processing      ~500ms-5s        Model inference (variable!)
+Response Routing       <1ms             Reverse path through ALB
+TLS Encryption         ~1-5ms           Encrypt response
+Total (typical)        ~600ms-6s        Most time spent in Ollama
+
+================================================================================
+                         FAILURE SCENARIOS
+================================================================================
+
+SCENARIO 1: User Cannot Reach ALB
+  Problem: DNS resolution fails or ALB unreachable
+  Flow: User → Route53 → ✗ (fails)
+  Recovery: Check Route53 configuration, ALB status
+
+SCENARIO 2: ALB Cannot Reach OpenWebUI
+  Problem: Instance down, security group misconfigured
+  Flow: ALB → OpenWebUI → ✗ (fails)
+  Recovery: Check instance health, security groups, NGINX status
+
+SCENARIO 3: OpenWebUI Cannot Reach Ollama
+  Problem: Ollama instance down, firewall blocks port
+  Flow: OpenWebUI → Ollama → ✗ (fails)
+  Recovery: Check Ollama health, security groups, network routes
+
+SCENARIO 4: Ollama Models Not Loaded
+  Problem: Models not downloaded, disk space full
+  Flow: Ollama → Models → ✗ (fails)
+  Recovery: Check model downloads, disk space, Ollama logs
+
+SCENARIO 5: TLS Certificate Expired
+  Problem: ACM certificate not renewed
+  Flow: User → ALB (TLS) → ✗ (fails)
+  Recovery: Check certificate expiry, update in ALB listener
+
+================================================================================
+                        OPTIMIZATION OPPORTUNITIES
+================================================================================
+
+CACHING:
+  • Cache OpenWebUI responses in CloudFront
+  • Cache Ollama API responses
+  • Cache model weights in memory
+
+COMPRESSION:
+  • Enable gzip compression in NGINX
+  • Reduce response size for faster delivery
+
+CONNECTION POOLING:
+  • OpenWebUI → Ollama connection pool
+  • Reduces connection overhead
+
+ASYNCHRONOUS PROCESSING:
+  • Use message queue for long-running requests
+  • WebSocket for streaming responses
+  • Background job processing
+
+MONITORING:
+  • Add request/response logging
+  • Track latency metrics
+  • Monitor error rates
+
+================================================================================
